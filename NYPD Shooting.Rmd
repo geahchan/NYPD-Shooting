@@ -1,0 +1,202 @@
+---
+title: "NYPD_Shooting"
+author: "W.G."
+date: "2023-08-19"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Analyzing NYPD Shooting Data
+
+## Introduction
+
+This document presents an analysis of NYPD shooting data obtained from the city of New York's database. The aim is to uncover insights and patterns within the data through exploratory data analysis and data visualization.
+
+# Importing Required Libraries 
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(lubridate)
+```
+
+# Step 1: Data Import
+
+The data was sourced from the city of New York's database, accessed via the link provided below.
+
+## Data Source
+
+```{r}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv"
+```
+
+## Read the Data
+```{r}
+NYPD_shooting_data <-read_csv(url_in)
+
+```
+
+
+# Step 2: Data Cleaning and Transformation
+
+### Cleaning and Selecting Columns
+```{r}
+Cleaned_NYPD_shooting_data <- subset(NYPD_shooting_data, select = -c(PERP_SEX, PERP_RACE, LOCATION_DESC, PERP_AGE_GROUP, INCIDENT_KEY, LOC_OF_OCCUR_DESC, PRECINCT, JURISDICTION_CODE,LOC_CLASSFCTN_DESC, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+```
+
+### Formatting Date
+```{r}
+Cleaned_NYPD_shooting_data$parsed <- strptime(Cleaned_NYPD_shooting_data$OCCUR_DATE, "%d/%m/%Y")
+Cleaned_NYPD_shooting_data <- Cleaned_NYPD_shooting_data %>%mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+```
+### Adding Time Elements
+```{r}
+Cleaned_NYPD_shooting_data <- Cleaned_NYPD_shooting_data %>%
+  mutate_at(vars(OCCUR_DATE), tibble::lst(year, month, day))
+```
+### Add column for day of the week
+```{r}
+Cleaned_NYPD_shooting_data['day_of_week'] <- c(wday(Cleaned_NYPD_shooting_data$OCCUR_DATE, label = TRUE))
+```
+  
+### Summarizing Cleaned Data
+```{r}
+summary(Cleaned_NYPD_shooting_data)
+
+```
+
+
+
+# Step 3: Data Analysis
+
+## Analyzing Victims Gender
+```{r}
+victime_sex <-Cleaned_NYPD_shooting_data %>% group_by(VIC_SEX) %>% summarise(COUNT = n())
+victime_sex
+```
+
+
+## Analyzing by Borough (District)
+```{r}
+by_district <-Cleaned_NYPD_shooting_data %>% group_by(BORO) %>% summarise(COUNT = n())
+by_district
+```
+### Adding Population Data 
+**Incorporating Population Data:**
+Population data is obtained manually from [https://en.wikipedia.org/wiki/New_York_City](https://en.wikipedia.org/wiki/New_York_City) for simplicity. It's important to note that the population has not remained constant over the years. In the interest of simplicity, we have chosen to overlook the approximately 12% change in population from 2006 to 2022 for the purposes of this analysis.
+```{r}
+by_district['Population'] <- c(1472654, 2736074, 1694251, 2405464, 495747)
+by_district
+```
+### Analyzing cases per one million
+```{r}
+by_district['shooting_per_milion'] <- by_district$COUNT / by_district$Population *1000000
+by_district
+```
+
+
+## Analyzing Cases Over Years and Months
+```{r}
+by_year <-Cleaned_NYPD_shooting_data %>% group_by(year) %>% summarise(COUNT = n())
+by_year
+```
+
+```{r}
+by_month <-Cleaned_NYPD_shooting_data %>% group_by(month) %>% summarise(COUNT = n())
+by_month
+```
+
+### Adding Average Temperature per Month
+**Incorporating Temperature Data:**
+Average temperature data is integrated into the analysis from https://en.climate-data.org/north-america/united-states-of-america/new-york/new-york-1091/#google_vignette. It's important to acknowledge that temperature fluctuations over the years are not uniform. For the sake of simplicity, we have chosen to omit accounting for the varying temperature changes from year to year in the period under consideration, ensuring a manageable scope for analysis.
+
+```{r}
+by_month['Av_Temp'] <- c(-1, 0, 4.1, 10.4, 16, 21.3, 24.5, 23.6, 20.1, 13.7, 7.7, 2.5)
+by_month
+```
+
+
+## Analyzing Cases per Day of the Week
+```{r}
+by_day <-Cleaned_NYPD_shooting_data %>% group_by(day_of_week) %>% summarise(COUNT = n())
+by_day
+```
+ 
+ 
+## Analyzing Cases per Day and Year
+```{r}
+by_day_year <-Cleaned_NYPD_shooting_data %>% group_by(year, day) %>% summarise(COUNT = n(), .groups = 'drop')
+by_day_year
+```
+
+
+
+# Step 4: Data Visualization
+
+## Cases per Month vs. Ambient Temperature
+```{r}
+by_month %>% ggplot() + scale_color_discrete(name="Avg. Temperature") + geom_bar(aes(x=month, y = COUNT),stat="identity")  + geom_line(aes(x=month, y= Av_Temp*145, color="Average temperature"),stat="identity", group = 1) + 
+  labs(title = "Number of cases per month relative to Avg. Temperature", x = "Month of the year", y = "Number of cases") 
+```
+
+The chart shows a correlation between ambient temperature and crime rates. Lower temperatures correspond to lower crime rates, which is an expected trend as people are less likely to be out in colder weather.
+
+
+## Cases per Day of the Week
+```{r}
+by_day %>% ggplot() + geom_bar(aes(x=day_of_week, y = COUNT),stat="identity") +
+  labs(title = "Number of cases per day of the week", x = "Day of the week", y = "Number of cases")
+```
+
+The plot indicates that crime rates are higher on weekends, especially on Sundays. Crime rates are comparatively lower on Wednesdays.
+
+## Cases per District in New York City
+```{r}
+by_district %>% ggplot() + geom_bar(aes(x=BORO, y = COUNT),stat="identity") +
+  labs(title = "Number of cases per distrcit", x = "Distrcit name", y = "Number of cases")
+```
+
+This plot reveals the districts with the highest crime rates. Brooklyn initially stands out in terms of total cases, but when considering cases per million, Bronx takes the lead.
+
+## Cases per District per Million
+```{r}
+by_district %>% ggplot() + geom_bar(aes(x=BORO, y = shooting_per_milion),stat="identity") +
+  labs(title = "Number of cases per district", x = "Distrcit name", y = "Number of cases per million")
+```
+
+
+# Step 5 Modeling Daily Cases Over the Years
+
+## Linear Regression Model
+
+```{r}
+M <- lm (COUNT ~ year , data = by_day_year)
+```
+
+## Visualizing Data and Regression Line
+
+```{r}
+plot(by_day_year$year, by_day_year$COUNT)
+abline (M)
+
+```
+
+The linear regression model shows limitations in capturing the complexity of the data. Notably, non-linear drops in crime rates in 2012 and 2019 suggest other influential factors such as policy changes or the COVID-19 pandemic.
+
+
+# Step 6 Identify Bias
+As someone unfamiliar with the US and New York's crime rates, my initial expectations were shaped by media and limited exposure. This bias led me to anticipate a linear increase in crime rates over the years. However, the analysis uncovers the significant impact of policy changes and external events, highlighting the need to considering multiple perspectives when interpreting data.
+
+# Step 7 Conclusion
+In conclusion, this analysis of NYPD shooting data provides valuable insights into the patterns and dynamics of crime in New York City. Through thorough data cleaning, transformation, and analysis, several key findings emerged:
+
+1. **Temporal Patterns**: Crime rates correlate with ambient temperature and vary by day of the week, peaking on weekends.
+
+2. **Geographical Distribution**: District-wise analysis highlighted varying crime rates, with Bronx having the highest cases per million residents.
+
+3. **Long-Term Trends**: A linear regression model showed limitations in explaining fluctuations in crime rates, indicating external influences like policy changes and events.
+
+4. **Perspective and Bias**: Initial biases influenced by media shaped expectations, emphasizing the importance of considering diverse viewpoints.
+
+In essence, this analysis demonstrates that crime patterns are influenced by a combination of temporal, geographical, and contextual factors. The findings emphasize the need for a holistic approach to data analysis and interpretation, taking into account various dimensions that contribute to the dynamics of crime in a complex urban environment like New York City
